@@ -146,56 +146,6 @@ struct generic_get_data_ {
 };
 static struct generic_get_data_ *generic_get_data;
 
-#ifdef CONFIG_DEBUG_FS
-#define OUT_BUFFER_SIZE 56
-#define IN_BUFFER_SIZE 24
-
-static struct timeval out_cold_tv;
-static struct timeval out_warm_tv;
-static struct timeval out_cont_tv;
-static struct timeval in_cont_tv;
-static long out_enable_flag;
-static long in_enable_flag;
-static struct dentry *out_dentry;
-static struct dentry *in_dentry;
-static int in_cont_index;
-/*This var is used to keep track of first write done for cold output latency */
-static int out_cold_index;
-static char *out_buffer;
-static char *in_buffer;
-
-static uint32_t adsp_reg_event_opcode[] = {
-	ASM_STREAM_CMD_REGISTER_PP_EVENTS,
-	ASM_STREAM_CMD_REGISTER_ENCDEC_EVENTS,
-	ASM_STREAM_CMD_REGISTER_IEC_61937_FMT_UPDATE };
-
-static uint32_t adsp_raise_event_opcode[] = {
-	ASM_STREAM_PP_EVENT,
-	ASM_STREAM_CMD_ENCDEC_EVENTS,
-	ASM_IEC_61937_MEDIA_FMT_EVENT };
-
-static int is_adsp_reg_event(uint32_t cmd)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(adsp_reg_event_opcode); i++) {
-		if (cmd == adsp_reg_event_opcode[i])
-			return i;
-	}
-	return -EINVAL;
-}
-
-static int is_adsp_raise_event(uint32_t cmd)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(adsp_raise_event_opcode); i++) {
-		if (cmd == adsp_raise_event_opcode[i])
-			return i;
-	}
-	return -EINVAL;
-}
-
 static inline void q6asm_set_flag_in_token(union asm_token_struct *asm_token,
 					   int flag, int flag_offset)
 {
@@ -278,6 +228,56 @@ uint8_t q6asm_get_stream_id_from_token(uint32_t token)
 }
 EXPORT_SYMBOL(q6asm_get_stream_id_from_token);
 
+static uint32_t adsp_reg_event_opcode[] = {
+	ASM_STREAM_CMD_REGISTER_PP_EVENTS,
+	ASM_STREAM_CMD_REGISTER_ENCDEC_EVENTS,
+	ASM_STREAM_CMD_REGISTER_IEC_61937_FMT_UPDATE };
+
+static int is_adsp_reg_event(uint32_t cmd)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(adsp_reg_event_opcode); i++) {
+		if (cmd == adsp_reg_event_opcode[i])
+			return i;
+	}
+	return -EINVAL;
+}
+
+static uint32_t adsp_raise_event_opcode[] = {
+	ASM_STREAM_PP_EVENT,
+	ASM_STREAM_CMD_ENCDEC_EVENTS,
+	ASM_IEC_61937_MEDIA_FMT_EVENT };
+
+static int is_adsp_raise_event(uint32_t cmd)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(adsp_raise_event_opcode); i++) {
+		if (cmd == adsp_raise_event_opcode[i])
+			return i;
+	}
+	return -EINVAL;
+}
+
+#ifdef CONFIG_DEBUG_FS
+#define OUT_BUFFER_SIZE 56
+#define IN_BUFFER_SIZE 24
+
+static struct timeval out_cold_tv;
+static struct timeval out_warm_tv;
+static struct timeval out_cont_tv;
+static struct timeval in_cont_tv;
+static long out_enable_flag;
+static long in_enable_flag;
+static struct dentry *out_dentry;
+static struct dentry *in_dentry;
+static int in_cont_index;
+/*This var is used to keep track of first write done for cold output latency */
+static int out_cold_index;
+static char *out_buffer;
+static char *in_buffer;
+
 static int audio_output_latency_dbgfs_open(struct inode *inode,
 							struct file *file)
 {
@@ -311,7 +311,7 @@ static ssize_t audio_output_latency_dbgfs_write(struct file *file,
 		pr_err("%s: err count is more %zd\n", __func__, count);
 		return -EINVAL;
 	}
-	temp  = kmalloc(2*sizeof(char), GFP_KERNEL);
+	temp  = kmalloc(2, GFP_KERNEL);
 
 	out_cold_index = 0;
 
@@ -367,7 +367,7 @@ static ssize_t audio_input_latency_dbgfs_write(struct file *file,
 		pr_err("%s: err count is more %zd\n", __func__, count);
 		return -EINVAL;
 	}
-	temp  = kmalloc(2*sizeof(char), GFP_KERNEL);
+	temp  = kmalloc(2, GFP_KERNEL);
 
 	if (temp) {
 		if (copy_from_user(temp, buf, 2*sizeof(char))) {
@@ -4508,7 +4508,7 @@ int q6asm_get_shared_pos(struct audio_client *ac, uint32_t *read_index,
 			continue;
 		return 0;
 	}
-	pr_err("%s out of tries trying to get a good read, try again\n",
+	pr_debug("%s out of tries trying to get a good read, try again\n",
 	       __func__);
 	return -EAGAIN;
 }
@@ -8328,7 +8328,7 @@ static int q6asm_memory_map_regions(struct audio_client *ac, int dir,
 		return -EINVAL;
 	}
 
-	buffer_node = kzalloc(sizeof(struct asm_buffer_node) * bufcnt,
+	buffer_node = kcalloc(bufcnt, sizeof(struct asm_buffer_node),
 				GFP_KERNEL);
 	if (!buffer_node)
 		return -ENOMEM;

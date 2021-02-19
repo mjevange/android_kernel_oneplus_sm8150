@@ -218,6 +218,7 @@ struct msm_dai_q6_dai_data {
 	struct afe_dec_config dec_config;
 	union afe_port_config port_config;
 	u16 vi_feed_mono;
+	u32 xt_logging_disable;
 };
 
 struct msm_dai_q6_spdif_dai_data {
@@ -254,6 +255,7 @@ struct msm_dai_q6_cdc_dma_dai_data {
 	u32 channels;
 	u32 bitwidth;
 	u32 is_island_dai;
+	u32 xt_logging_disable;
 	union afe_port_config port_config;
 };
 
@@ -322,6 +324,15 @@ static const char *const sb_format[] = {
 
 static const struct soc_enum sb_config_enum[] = {
 	SOC_ENUM_SINGLE_EXT(3, sb_format),
+};
+
+static const char * const xt_logging_disable_text[] = {
+	"FALSE",
+	"TRUE",
+};
+
+static const struct soc_enum xt_logging_disable_enum[] = {
+	SOC_ENUM_SINGLE_EXT(2, xt_logging_disable_text),
 };
 
 static const char *const tdm_data_format[] = {
@@ -2632,13 +2643,13 @@ static int msm_dai_q6_set_channel_map(struct snd_soc_dai *dai,
 	return rc;
 }
 
-/* all ports with excursion logging requirement can use this digital_mute api */
 static int msm_dai_q6_spk_digital_mute(struct snd_soc_dai *dai,
 				       int mute)
 {
 	int port_id = dai->id;
+	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
 
-	if (mute)
+	if (mute && !dai_data->xt_logging_disable)
 		afe_get_sp_xt_logging_data(port_id);
 
 	return 0;
@@ -2682,6 +2693,57 @@ static int msm_dai_q6_cal_info_get(struct snd_kcontrol *kcontrol,
 	struct msm_dai_q6_dai_data *dai_data = kcontrol->private_data;
 
 	ucontrol->value.integer.value[0] = dai_data->cal_mode;
+	return 0;
+}
+
+static int msm_dai_q6_cdc_dma_xt_logging_disable_put(
+					struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	struct msm_dai_q6_cdc_dma_dai_data *dai_data = kcontrol->private_data;
+
+	if (dai_data) {
+		dai_data->xt_logging_disable = ucontrol->value.integer.value[0];
+		pr_debug("%s: setting xt logging disable to %d\n",
+			__func__, dai_data->xt_logging_disable);
+	}
+
+	return 0;
+}
+
+static int msm_dai_q6_cdc_dma_xt_logging_disable_get(
+					struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	struct msm_dai_q6_cdc_dma_dai_data *dai_data = kcontrol->private_data;
+
+	if (dai_data)
+		ucontrol->value.integer.value[0] = dai_data->xt_logging_disable;
+	return 0;
+}
+
+static int msm_dai_q6_sb_xt_logging_disable_put(
+					struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	struct msm_dai_q6_dai_data *dai_data = kcontrol->private_data;
+
+	if (dai_data) {
+		dai_data->xt_logging_disable = ucontrol->value.integer.value[0];
+		pr_debug("%s: setting xt logging disable to %d\n",
+			__func__, dai_data->xt_logging_disable);
+	}
+
+	return 0;
+}
+
+static int msm_dai_q6_sb_xt_logging_disable_get(struct snd_kcontrol *kcontrol,
+				    struct snd_ctl_elem_value *ucontrol)
+{
+	struct msm_dai_q6_dai_data *dai_data = kcontrol->private_data;
+
+	if (dai_data)
+		ucontrol->value.integer.value[0] = dai_data->xt_logging_disable;
 	return 0;
 }
 
@@ -3423,7 +3485,10 @@ static const struct snd_kcontrol_new sb_config_controls[] = {
 		     msm_dai_q6_cal_info_put),
 	SOC_ENUM_EXT("SLIM_2_RX Format", sb_config_enum[0],
 		     msm_dai_q6_sb_format_get,
-		     msm_dai_q6_sb_format_put)
+		     msm_dai_q6_sb_format_put),
+	SOC_ENUM_EXT("SLIM_0_RX XTLoggingDisable", xt_logging_disable_enum[0],
+		     msm_dai_q6_sb_xt_logging_disable_get,
+		     msm_dai_q6_sb_xt_logging_disable_put),
 };
 
 static const struct snd_kcontrol_new rt_proxy_config_controls[] = {
@@ -3583,6 +3648,9 @@ static int msm_dai_q6_dai_probe(struct snd_soc_dai *dai)
 		rc = snd_ctl_add(dai->component->card->snd_card,
 				snd_ctl_new1(&avd_drift_config_controls[0],
 					dai));
+		rc = snd_ctl_add(dai->component->card->snd_card,
+				 snd_ctl_new1(&sb_config_controls[3],
+				 dai_data));
 		break;
 	case SLIMBUS_6_RX:
 		rc = snd_ctl_add(dai->component->card->snd_card,
@@ -4053,9 +4121,9 @@ static int msm_auxpcm_dev_probe(struct platform_device *pdev)
 	}
 
 	auxpcm_pdata->mode_8k.slot_mapping =
-					kzalloc(sizeof(uint16_t) *
-					    auxpcm_pdata->mode_8k.num_slots,
-					    GFP_KERNEL);
+					kcalloc(auxpcm_pdata->mode_8k.num_slots,
+						sizeof(uint16_t),
+						GFP_KERNEL);
 	if (!auxpcm_pdata->mode_8k.slot_mapping) {
 		dev_err(&pdev->dev, "%s No mem for mode_8k slot mapping\n",
 			__func__);
@@ -4068,9 +4136,9 @@ static int msm_auxpcm_dev_probe(struct platform_device *pdev)
 				(u16)be32_to_cpu(slot_mapping_array[i]);
 
 	auxpcm_pdata->mode_16k.slot_mapping =
-					kzalloc(sizeof(uint16_t) *
-					     auxpcm_pdata->mode_16k.num_slots,
-					     GFP_KERNEL);
+					kcalloc(auxpcm_pdata->mode_16k.num_slots,
+						sizeof(uint16_t),
+						GFP_KERNEL);
 
 	if (!auxpcm_pdata->mode_16k.slot_mapping) {
 		dev_err(&pdev->dev, "%s No mem for mode_16k slot mapping\n",
@@ -10283,10 +10351,15 @@ static int msm_dai_q6_cdc_dma_format_get(struct snd_kcontrol *kcontrol,
 		dai_data->port_config.cdc_dma.data_format;
 	return 0;
 }
+
 static const struct snd_kcontrol_new cdc_dma_config_controls[] = {
 	SOC_ENUM_EXT("WSA_CDC_DMA_0 TX Format", cdc_dma_config_enum[0],
 		     msm_dai_q6_cdc_dma_format_get,
 		     msm_dai_q6_cdc_dma_format_put),
+	SOC_ENUM_EXT("WSA_CDC_DMA_0 RX XTLoggingDisable",
+		     xt_logging_disable_enum[0],
+		     msm_dai_q6_cdc_dma_xt_logging_disable_get,
+		     msm_dai_q6_cdc_dma_xt_logging_disable_put),
 };
 
 /* SOC probe for codec DMA interface */
@@ -10311,6 +10384,11 @@ static int msm_dai_q6_dai_cdc_dma_probe(struct snd_soc_dai *dai)
 	case AFE_PORT_ID_WSA_CODEC_DMA_TX_0:
 		rc = snd_ctl_add(dai->component->card->snd_card,
 				 snd_ctl_new1(&cdc_dma_config_controls[0],
+				 dai_data));
+		break;
+	case AFE_PORT_ID_WSA_CODEC_DMA_RX_0:
+		rc = snd_ctl_add(dai->component->card->snd_card,
+				 snd_ctl_new1(&cdc_dma_config_controls[1],
 				 dai_data));
 		break;
 	default:
@@ -10500,7 +10578,8 @@ static int msm_dai_q6_cdc_dma_prepare(struct snd_pcm_substream *substream,
 static void msm_dai_q6_cdc_dma_shutdown(struct snd_pcm_substream *substream,
 				     struct snd_soc_dai *dai)
 {
-	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
+	struct msm_dai_q6_cdc_dma_dai_data *dai_data =
+					dev_get_drvdata(dai->dev);
 	int rc = 0;
 
 	if (test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
@@ -10519,6 +10598,19 @@ static void msm_dai_q6_cdc_dma_shutdown(struct snd_pcm_substream *substream,
 		clear_bit(STATUS_PORT_STARTED, dai_data->hwfree_status);
 }
 
+static int msm_dai_q6_cdc_dma_digital_mute(struct snd_soc_dai *dai,
+				       int mute)
+{
+	int port_id = dai->id;
+	struct msm_dai_q6_cdc_dma_dai_data *dai_data =
+					dev_get_drvdata(dai->dev);
+
+	if (mute && !dai_data->xt_logging_disable)
+		afe_get_sp_xt_logging_data(port_id);
+
+	return 0;
+}
+
 static struct snd_soc_dai_ops msm_dai_q6_cdc_dma_ops = {
 	.prepare          = msm_dai_q6_cdc_dma_prepare,
 	.hw_params        = msm_dai_q6_cdc_dma_hw_params,
@@ -10531,7 +10623,7 @@ static struct snd_soc_dai_ops msm_dai_q6_cdc_wsa_dma_ops = {
 	.hw_params        = msm_dai_q6_cdc_dma_hw_params,
 	.shutdown         = msm_dai_q6_cdc_dma_shutdown,
 	.set_channel_map = msm_dai_q6_cdc_dma_set_channel_map,
-	.digital_mute = msm_dai_q6_spk_digital_mute,
+	.digital_mute = msm_dai_q6_cdc_dma_digital_mute,
 };
 
 static struct snd_soc_dai_driver msm_dai_q6_cdc_dma_dai[] = {

@@ -1,4 +1,4 @@
-/* Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2018, 2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -125,6 +125,8 @@ static struct wcd_mbhc_register
 	WCD_MBHC_REGISTER("WCD_MBHC_HS_COMP_RESULT",
 			  MSM89XX_PMIC_ANALOG_MBHC_ZDET_ELECT_RESULT, 0x01,
 			  0, 0),
+	WCD_MBHC_REGISTER("WCD_MBHC_IN2P_CLAMP_STATE",
+			  SND_SOC_NOPM, 0x0, 0, 0),
 	WCD_MBHC_REGISTER("WCD_MBHC_MIC_SCHMT_RESULT",
 			  MSM89XX_PMIC_ANALOG_MBHC_ZDET_ELECT_RESULT, 0x02,
 			  1, 0),
@@ -4311,9 +4313,9 @@ static int msm_anlg_cdc_init_supplies(struct sdm660_cdc_priv *sdm660_cdc,
 	int ret;
 	int i;
 
-	sdm660_cdc->supplies = devm_kzalloc(sdm660_cdc->dev,
-					sizeof(struct regulator_bulk_data) *
+	sdm660_cdc->supplies = devm_kcalloc(sdm660_cdc->dev,
 					ARRAY_SIZE(pdata->regulator),
+					sizeof(struct regulator_bulk_data),
 					GFP_KERNEL);
 	if (!sdm660_cdc->supplies) {
 		ret = -ENOMEM;

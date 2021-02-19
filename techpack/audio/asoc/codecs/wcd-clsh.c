@@ -70,7 +70,7 @@ static const char *state_to_str(u8 state, char *buf, size_t buflen)
 	for (i = 0; i < ARRAY_SIZE(states); i++) {
 		if (!(state & (1 << i)))
 			continue;
-		cnt = snprintf(buf, buflen - cnt - 1, "%s%s%s", buf,
+		cnt = scnprintf(buf, buflen - cnt - 1, "%s%s%s", buf,
 			       buf[0] == '\0' ? "[" : "|",
 			       states[i]);
 	}
@@ -449,6 +449,9 @@ static bool wcd_clsh_is_state_valid(u8 state)
 	case WCD_CLSH_STATE_HPHR_AUX:
 	case WCD_CLSH_STATE_HPH_ST_AUX:
 	case WCD_CLSH_STATE_EAR_AUX:
+	case WCD_CLSH_STATE_HPHL_EAR:
+	case WCD_CLSH_STATE_HPHR_EAR:
+	case WCD_CLSH_STATE_HPH_ST_EAR:
 		return true;
 	default:
 		return false;
